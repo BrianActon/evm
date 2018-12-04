@@ -44,6 +44,9 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
+
+//	pgl "github.com/Fantom-foundation/pgLachesisAPI/pgLachesis"
+	pgl "github.com/BrianActon/pgLachesisAPI/pgLachesis"
 )
 
 const (
@@ -272,7 +275,7 @@ func (s *PrivateAccountAPI) OpenWallet(url string, passphrase *string) error {
 	return wallet.Open(pass)
 }
 
-// DeriveAccount requests a HD wallet to derive a new account, optionally pinning
+// DeriveAccount requests a HD wallet to derive a new account, optionally pinning 
 // it for later reuse.
 func (s *PrivateAccountAPI) DeriveAccount(url string, path string, pin *bool) (accounts.Account, error) {
 	wallet, err := s.am.Wallet(url)
@@ -293,6 +296,13 @@ func (s *PrivateAccountAPI) DeriveAccount(url string, path string, pin *bool) (a
 func (s *PrivateAccountAPI) NewAccount(password string) (common.Address, error) {
 	acc, err := fetchKeystore(s.am).NewAccount(password)
 	if err == nil {
+
+		// add new account to PostgresDB
+		err = pgl.WriteAccounts([]byte(fmt.Sprintf("%v", acc)), acc.Address)
+		if err != nil {
+			fmt.Println("Error Writing to postgres:", err)
+		}
+
 		return acc.Address, nil
 	}
 	return common.Address{}, err
@@ -477,7 +487,7 @@ func (s *PrivateAccountAPI) SignAndSendTransaction(ctx context.Context, args Sen
 // PublicBlockChainAPI provides an API to access the Ethereum blockchain.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicBlockChainAPI struct {
-	b Backend
+	b Backend 
 }
 
 // NewPublicBlockChainAPI creates a new Ethereum blockchain API.
@@ -1087,6 +1097,14 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, ha
 	if receipt.ContractAddress != (common.Address{}) {
 		fields["contractAddress"] = receipt.ContractAddress
 	}
+
+	//  update postgres transactions table 
+	// ?? No transaction value?
+	err = pgl.AddTransactions(fields)
+	if err != nil {
+		fmt.Println("Error adding transaction", err)
+	}
+
 	return fields, nil
 }
 
@@ -1228,6 +1246,11 @@ func (s *PublicTransactionPoolAPI) SendTransaction(ctx context.Context, args Sen
 	if err != nil {
 		return common.Hash{}, err
 	}
+
+	err = pgl.WriteTransactions()
+	err = pgl.WriteAccountTrans(account, tx.)
+
+
 	return submitTransaction(ctx, s.b, signed)
 }
 
